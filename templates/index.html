@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Koo-Toueg Interactive Simulation</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        h1 {
+            color: #333;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .controls-panel {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+        }
+
+        .control-section {
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .control-section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
+        .section-title {
+            font-size: 1.2em;
+            color: #333;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+
+        .control-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+            color: white;
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        .btn-info {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        input, select {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1em;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+        }
+
+        .processes-container {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .processes-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 3px solid #667eea;
+        }
+
+        .processes-header h2 {
+            font-size: 1.5em;
+            color: #333;
+        }
+
+        .step-counter {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .processes-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .process-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            padding: 20px;
+            color: white;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .process-card.running {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        }
+
+        .process-card.checkpointing {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        .process-card.failed {
+            background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+        }
+
+        .process-card.recovering {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            animation: pulse 1s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.03); }
+        }
+
+        .process-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .process-id {
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+
+        .status-badge {
+            background: rgba(255,255,255,0.3);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .process-data {
+            font-size: 0.85em;
+            line-height: 1.6;
+        }
+
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .process-actions {
+            display: flex;
+            gap: 5px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 2px solid rgba(255,255,255,0.3);
+        }
+
+        .process-actions button {
+            flex: 1;
+            padding: 6px 10px;
+            font-size: 0.85em;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            background: rgba(255,255,255,0.3);
+            color: white;
+            font-weight: bold;
+            transition: all 0.2s ease;
+        }
+
+        .process-actions button:hover {
+            background: rgba(255,255,255,0.5);
+        }
+
+        .log-container {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .log-header {
+            font-size: 1.5em;
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #667eea;
+        }
+
+        .log-box {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 10px;
+            height: 500px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            line-height: 1.6;
+        }
+
+        .log-entry {
+            margin-bottom: 6px;
+            padding: 6px;
+            border-radius: 4px;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateX(-10px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .log-entry.info { color: #4fc3f7; }
+        .log-entry.success { color: #81c784; font-weight: bold; }
+        .log-entry.error { color: #e57373; font-weight: bold; }
+        .log-entry.checkpoint { color: #ffb74d; font-weight: bold; }
+        .log-entry.recovery { color: #ba68c8; font-weight: bold; }
+        .log-entry.step { color: #90caf9; }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+
+        .empty-state h3 {
+            font-size: 1.5em;
+            margin-bottom: 10px;
+        }
+
+        @media (max-width: 1200px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🌦️ Koo-Toueg Interactive Simulation</h1>
+            <p class="subtitle">Dynamic Node Creation & Manual Control</p>
+        </header>
+
+        <div class="controls-panel">
+            <!-- Node Management -->
+            <div class="control-section">
+                <div class="section-title">📦 Node Management</div>
+                <div class="control-row">
+                    <input type="text" id="nodeName" placeholder="Node name (optional)" style="flex: 1;">
+                    <button class="btn btn-success" onclick="addProcess()">➕ Add Node</button>
+                    <button class="btn btn-danger" onclick="resetSimulation()">🔄 Reset All</button>
+                </div>
+            </div>
+
+            <!-- Simulation Control -->
+            <div class="control-section">
+                <div class="section-title">🎮 Simulation Control</div>
+                <div class="control-row">
+                    <button class="btn btn-primary" onclick="stepForward()">⏭️ Step Forward</button>
+                    <button class="btn btn-warning" onclick="triggerCheckpoint()">💾 Checkpoint Now</button>
+                    <select id="speedSelect" style="width: 150px;">
+                        <option value="0.5">0.5x Speed</option>
+                        <option value="1" selected>1x Speed</option>
+                        <option value="2">2x Speed</option>
+                        <option value="5">5x Speed</option>
+                    </select>
+                    <select id="frequencySelect" style="width: 200px;">
+                        <option value="3">Checkpoint every 3 steps</option>
+                        <option value="5" selected>Checkpoint every 5 steps</option>
+                        <option value="10">Checkpoint every 10 steps</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Auto Mode -->
+            <div class="control-section">
+                <div class="section-title">⚙️ Auto Mode</div>
+                <div class="control-row">
+                    <button class="btn btn-success" id="startAutoBtn" onclick="startAuto()">▶️ Start Auto</button>
+                    <button class="btn btn-warning" id="pauseBtn" onclick="pauseSimulation()" disabled>⏸️ Pause</button>
+                    <button class="btn btn-info" id="resumeBtn" onclick="resumeSimulation()" disabled>▶️ Resume</button>
+                    <button class="btn btn-danger" id="stopBtn" onclick="stopSimulation()" disabled>⏹️ Stop</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="processes-container">
+                <div class="processes-header">
+                    <h2>Process States</h2>
+                    <div class="step-counter">Step: <span id="stepCount">0</span></div>
+                </div>
+                <div id="processes" class="processes-grid"></div>
+                <div id="emptyState" class="empty-state">
+                    <h3>No Processes Yet</h3>
+                    <p>Add nodes to begin simulation</p>
+                </div>
+            </div>
+
+            <div class="log-container">
+                <h2 class="log-header">System Log</h2>
+                <div id="log" class="log-box"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const processesContainer = document.getElementById('processes');
+        const emptyState = document.getElementById('emptyState');
+        const logContainer = document.getElementById('log');
+        const stepCountEl = document.getElementById('stepCount');
+
+        let isAutoRunning = false;
+
+        // Node Management
+        function addProcess() {
+            const name = document.getElementById('nodeName').value.trim();
+            socket.emit('add_process', { name: name || null });
+            document.getElementById('nodeName').value = '';
+        }
+
+        function removeProcess(pid) {
+            if (confirm('Remove this process?')) {
+                socket.emit('remove_process', { pid: pid });
+            }
+        }
+
+        function triggerFailure(pid) {
+            socket.emit('trigger_failure', { pid: pid });
+        }
+
+        function triggerRecovery(pid) {
+            socket.emit('trigger_recovery', { pid: pid });
+        }
+
+        // Simulation Control
+        function stepForward() {
+            socket.emit('step_forward');
+        }
+
+        function triggerCheckpoint() {
+            socket.emit('trigger_checkpoint');
+        }
+
+        function startAuto() {
+            const speed = parseFloat(document.getElementById('speedSelect').value);
+            const frequency = parseInt(document.getElementById('frequencySelect').value);
+            socket.emit('start_auto', { speed: speed, frequency: frequency });
+            isAutoRunning = true;
+            updateButtonStates();
+        }
+
+        function pauseSimulation() {
+            socket.emit('pause_simulation');
+        }
+
+        function resumeSimulation() {
+            socket.emit('resume_simulation');
+        }
+
+        function stopSimulation() {
+            socket.emit('stop_simulation');
+            isAutoRunning = false;
+            updateButtonStates();
+        }
+
+        function resetSimulation() {
+            if (confirm('Reset entire simulation? This will remove all nodes.')) {
+                socket.emit('reset_simulation');
+                isAutoRunning = false;
+                updateButtonStates();
+            }
+        }
+
+        function updateButtonStates() {
+            document.getElementById('startAutoBtn').disabled = isAutoRunning;
+            document.getElementById('pauseBtn').disabled = !isAutoRunning;
+            document.getElementById('resumeBtn').disabled = !isAutoRunning;
+            document.getElementById('stopBtn').disabled = !isAutoRunning;
+        }
+
+        // Socket Events
+        socket.on('update', (data) => {
+            const processes = data.processes;
+            stepCountEl.textContent = data.step_count;
+            
+            if (processes.length === 0) {
+                processesContainer.style.display = 'none';
+                emptyState.style.display = 'block';
+            } else {
+                processesContainer.style.display = 'grid';
+                emptyState.style.display = 'none';
+                
+                processesContainer.innerHTML = '';
+                processes.forEach(process => {
+                    const card = document.createElement('div');
+                    card.className = `process-card ${process.status}`;
+                    
+                    let checkpointBadge = '';
+                    if (process.checkpoint_type) {
+                        checkpointBadge = `<div style="margin-top: 8px; background: rgba(255,255,255,0.3); padding: 4px 8px; border-radius: 8px; font-size: 0.8em; text-align: center;">
+                            ${process.checkpoint_type === 'tentative' ? '📝 Tentative' : '✅ Permanent'}
+                        </div>`;
+                    }
+                    
+                    let lastCheckpoint = '';
+                    if (process.last_checkpoint_id) {
+                        lastCheckpoint = `<div class="data-row">
+                            <span>Last Checkpoint:</span>
+                            <span>${process.last_checkpoint_id}</span>
+                        </div>`;
+                    }
+                    
+                    card.innerHTML = `
+                        <div class="process-header">
+                            <div class="process-id">${process.custom_name}</div>
+                            <div class="status-badge">${process.status}</div>
+                        </div>
+                        <div class="process-data">
+                            <div class="data-row">
+                                <span>🌡️ Temperature:</span>
+                                <span>${process.state.temperature.toFixed(1)}°C</span>
+                            </div>
+                            <div class="data-row">
+                                <span>📊 Pressure:</span>
+                                <span>${process.state.pressure.toFixed(1)} hPa</span>
+                            </div>
+                            <div class="data-row">
+                                <span>💨 Wind:</span>
+                                <span>${process.state.wind_speed.toFixed(1)} m/s</span>
+                            </div>
+                            <div class="data-row">
+                                <span>💧 Humidity:</span>
+                                <span>${process.state.humidity.toFixed(1)}%</span>
+                            </div>
+                            <div class="data-row">
+                                <span>📶 Step:</span>
+                                <span>${process.state.computation_step}</span>
+                            </div>
+                            <div class="data-row">
+                                <span>💾 Checkpoints:</span>
+                                <span>${process.num_checkpoints}</span>
+                            </div>
+                            ${lastCheckpoint}
+                            <div class="data-row">
+                                <span>📤 Sent:</span>
+                                <span>${process.messages_sent} msgs</span>
+                            </div>
+                            <div class="data-row">
+                                <span>📥 Received:</span>
+                                <span>${process.messages_received} msgs</span>
+                            </div>
+                            ${checkpointBadge}
+                        </div>
+                        <div class="process-actions">
+                            ${!process.is_failed ? 
+                                `<button onclick="triggerFailure(${process.pid})">💥 Fail</button>` :
+                                `<button onclick="triggerRecovery(${process.pid})">🔧 Recover</button>`
+                            }
+                            <button onclick="removeProcess(${process.pid})">🗑️ Remove</button>
+                        </div>
+                    `;
+                    processesContainer.appendChild(card);
+                });
+            }
+        });
+
+        socket.on('log', (data) => {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${data.type}`;
+            const timestamp = new Date().toLocaleTimeString();
+            entry.textContent = `[${timestamp}] ${data.message}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        });
+
+        socket.on('connect', () => {
+            console.log('Connected to server');
+        });
+    </script>
+</body>
+</html>
